@@ -102,14 +102,25 @@ export function AnnotationLayer({
     return [t.x, t.y];
   };
 
-  // Whiteout + retype an existing text span: cover it with white, redraw text.
-  // ponytail: background assumed white, font -> Helvetica, new text black.
-  const editText = (t: EditTarget) => {
-    const next = window.prompt("Edit text:", t.text);
-    if (next === null) return;
-    addAnnotation({ id: uuid(), pageId, type: "whiteout", color: "#ffffff", x: t.x, y: t.y, w: t.w, h: t.h });
-    if (next.trim())
-      addAnnotation({ id: uuid(), pageId, type: "text", x: t.x, y: t.y, text: next, size: t.size, color: "#000000" });
+  // In-place editing of an existing text line: an <input> is placed exactly over
+  // the line (see foreignObject below). On commit we cover the original with a
+  // white box and redraw the new text as vector on export.
+  // ponytail: background assumed white; new text is Helvetica black.
+  const [editing, setEditing] = useState<EditTarget | null>(null);
+  const [editValue, setEditValue] = useState("");
+
+  const beginEdit = (t: EditTarget) => {
+    setEditing(t);
+    setEditValue(t.text);
+  };
+  const commitEdit = () => {
+    const t = editing;
+    if (!t) return;
+    setEditing(null);
+    if (editValue === t.text) return; // unchanged: leave original untouched
+    addAnnotation({ id: uuid(), pageId, type: "whiteout", color: "#ffffff", x: t.x - 1, y: t.y - 1, w: t.w + 2, h: t.h + 2 });
+    if (editValue.trim())
+      addAnnotation({ id: uuid(), pageId, type: "text", x: t.x, y: t.y, text: editValue, size: t.size, color: "#000000" });
   };
 
   const onBackgroundDown = (e: React.PointerEvent) => {
@@ -225,6 +236,7 @@ export function AnnotationLayer({
       {draft && <Shape a={draft} />}
 
       {tool === "edittext" &&
+        !editing &&
         editTargets.map((t, i) => (
           <rect
             key={i}
@@ -238,9 +250,41 @@ export function AnnotationLayer({
             strokeOpacity={0.5}
             strokeWidth={0.5}
             style={{ cursor: "text" }}
-            onClick={() => editText(t)}
+            onClick={() => beginEdit(t)}
           />
         ))}
+
+      {editing && (
+        <foreignObject x={editing.x} y={editing.y - editing.size * 0.2} width={Math.max(editing.w, 24) + 8} height={editing.size * 1.5}>
+          <input
+            autoFocus
+            value={editValue}
+            onChange={(e) => setEditValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                commitEdit();
+              } else if (e.key === "Escape") {
+                setEditing(null);
+              }
+            }}
+            onBlur={commitEdit}
+            style={{
+              width: "100%",
+              height: "100%",
+              margin: 0,
+              padding: 0,
+              border: "1px solid #3b82f6",
+              background: "#fff",
+              color: "#000",
+              fontFamily: editing.serif ? "Georgia, 'Times New Roman', serif" : "Helvetica, Arial, sans-serif",
+              fontSize: editing.size,
+              lineHeight: 1.1,
+              outline: "none",
+            }}
+          />
+        </foreignObject>
+      )}
     </svg>
   );
 }

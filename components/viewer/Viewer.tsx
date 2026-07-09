@@ -22,12 +22,29 @@ export function Viewer({ docBytes }: { docBytes: Uint8Array | null }) {
     try {
       const tc = await p.getTextContent();
       const found: EditTarget[] = [];
+      // Accumulate pdf.js text fragments into whole lines (they arrive in
+      // reading order; `hasEOL` marks a line break). One editable box per line.
+      let cur: { x0: number; x1: number; baseline: number; size: number; text: string; serif: boolean } | null = null;
+      const flush = () => {
+        if (!cur || !cur.text.trim()) return void (cur = null);
+        found.push({ x: cur.x0, y: vp.height - cur.baseline - cur.size, w: cur.x1 - cur.x0, h: cur.size, text: cur.text, size: cur.size, serif: cur.serif });
+        cur = null;
+      };
       for (const it of tc.items) {
-        if (!("str" in it) || !it.str.trim()) continue;
+        if (!("str" in it)) continue;
         const [, , , d, e, f] = it.transform;
         const size = it.height || Math.abs(d) || 12;
-        found.push({ x: e, y: vp.height - f - size, w: it.width, h: size, text: it.str, size });
+        const family = tc.styles?.[it.fontName]?.fontFamily ?? "";
+        const serif = /serif|times|georgia|roman|garamond/i.test(family) && !/sans/i.test(family);
+        if (!cur) cur = { x0: e, x1: e + it.width, baseline: f, size, text: it.str, serif };
+        else {
+          cur.x1 = e + it.width;
+          cur.size = Math.max(cur.size, size);
+          cur.text += it.str;
+        }
+        if (it.hasEOL) flush();
       }
+      flush();
       setTargets(found);
     } catch {
       setTargets([]);

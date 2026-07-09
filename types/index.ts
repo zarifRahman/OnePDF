@@ -54,7 +54,7 @@ export type Annotation =
   | WhiteoutAnnotation
   | ImageAnnotation;
 
-// A clickable existing-text span discovered via pdf.js, in PDF points (top-left).
-export type EditTarget = { x: number; y: number; w: number; h: number; text: string; size: number };
+// A clickable existing-text line discovered via pdf.js, in PDF points (top-left).
+export type EditTarget = { x: number; y: number; w: number; h: number; text: string; size: number; serif?: boolean };
 
 export type Style = { color: string; strokeWidth: number; fontSize: number };
