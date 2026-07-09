@@ -21,8 +21,15 @@ export function useKeyboardShortcuts() {
       } else if (mod && (key === "y" || (key === "z" && e.shiftKey))) {
         e.preventDefault();
         s.redo();
-      } else if (e.key === "Delete" && s.currentPageId) {
-        s.deletePage(s.currentPageId);
+      } else if (e.key === "Delete" || e.key === "Backspace") {
+        // Prefer removing a selected annotation; only delete the page if nothing
+        // is selected (and never while typing, handled by the guard above).
+        if (s.selectedId) {
+          e.preventDefault();
+          s.deleteAnnotation(s.selectedId);
+        } else if (e.key === "Delete" && s.currentPageId) {
+          s.deletePage(s.currentPageId);
+        }
       } else if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
         const idx = s.pages.findIndex((p) => p.id === s.currentPageId);
         const n = idx + (e.key === "ArrowRight" ? 1 : -1);

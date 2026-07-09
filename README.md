@@ -3,22 +3,33 @@
 A modern, fully client-side PDF manager. Upload, merge, reorder, rotate, and
 preview PDFs entirely in your browser — no files ever leave your machine.
 
-> **Status:** Phase 1 (foundation). The annotation/editing engine (text, draw,
-> shapes, images, signatures, page numbers) is planned for Phase 2 — see
-> [Roadmap](#roadmap).
+> **Status:** Phases 1 & 2 complete — full page management **and** an
+> annotation editor, all client-side.
 
-## Features (Phase 1)
+## Features
 
+**Documents**
 - **Upload** multiple PDFs via drag-and-drop or file picker
 - **Reorder** pages across files by drag-and-drop (dnd-kit)
 - **Merge** any number of PDFs into one
 - **Page ops:** rotate, delete, insert blank page
 - **Preview** with zoom, pan, and page navigation
-- **Undo / redo** for every edit
 - **Download** the result as a fresh PDF
+
+**Annotate / edit** (baked into the export as vectors — sharp, small files)
+- **Text** anywhere on a page
+- **Freehand** drawing
+- **Highlight** and **underline**
+- **Shapes:** rectangle, circle, line
+- **Images & signatures** (insert PNG/JPEG)
+- **Page numbers** (toggle)
+- **Select / move / delete** any mark; live color, stroke width, font size
+
+**Everywhere**
+- **Undo / redo** for every edit (pages *and* annotations)
 - **Light / dark** mode
 - **Keyboard shortcuts:** `Ctrl/Cmd+Z` undo · `Ctrl/Cmd+Y` (or `Shift+Ctrl+Z`)
-  redo · `Delete` remove current page · `←/→` navigate
+  redo · `Delete` remove selected annotation, else current page · `←/→` navigate
 - 100% in-browser — nothing is uploaded to any server
 
 ## Getting started
@@ -105,9 +116,18 @@ types/               PageDescriptor, SourceFile
 Next.js (App Router) · TypeScript · Tailwind CSS · shadcn/ui · Lucide · dnd-kit ·
 react-pdf (pdf.js) · pdf-lib · Zustand · Sonner · Framer Motion · next-themes.
 
-## Roadmap
+### Annotation model
 
-**Phase 2 — annotation engine** (overlay layer + pdf-lib draw-on-export):
-add text, freehand draw, highlight/underline, shapes (rect/circle/line),
-images + signatures, page numbers, and a right-hand properties panel. Output
-stays vector so text remains selectable and quality is preserved.
+Annotations are a second descriptor array in the store (`Annotation[]`), keyed
+by page id, with geometry in **PDF points, top-left origin**. They render live
+as an **SVG overlay** on the current page (`viewBox` in points, so it scales
+with zoom for free) and are **baked into the PDF only on download** via pdf-lib
+(`drawText`/`drawLine`/`drawRectangle`/`drawEllipse`/`drawImage`, y-flipped to
+pdf-lib's bottom-left origin) — the preview stays pages-only, so no double-draw.
+Undo/redo snapshots pages + annotations + page-number toggle together.
+
+Known simplifications (`ponytail:` in code):
+- Text content is entered via a `prompt()` rather than an inline editor.
+- Highlight/underline are drawn boxes/lines, not bound to the text layer.
+- Annotations assume the page is at rotation 0.
+- Images can be moved but not yet resized after insert.

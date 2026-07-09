@@ -4,11 +4,13 @@ import { Document, Page } from "react-pdf";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useDocStore } from "@/store/document";
 import { Skeleton } from "@/components/ui/skeleton";
+import { AnnotationLayer } from "@/components/editor/AnnotationLayer";
 
 export function Viewer({ docBytes }: { docBytes: Uint8Array | null }) {
-  const { pages, currentPageId, setCurrent, zoom } = useDocStore();
+  const { pages, currentPageId, setCurrent, zoom, tool } = useDocStore();
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
+  const [dims, setDims] = useState<{ w: number; h: number } | null>(null);
 
   const idx = pages.findIndex((p) => p.id === currentPageId);
   const pageNumber = idx >= 0 ? idx + 1 : 1;
@@ -20,9 +22,13 @@ export function Viewer({ docBytes }: { docBytes: Uint8Array | null }) {
   // Own copy: pdf.js detaches the buffer it receives (see ThumbnailItem).
   // Memoized file object so react-pdf doesn't reload every render.
   const file = useMemo(() => (docBytes ? { data: docBytes.slice(0) } : null), [docBytes]);
-
   // Gate <Page> on the loaded doc's count — docBytes lags the pages array.
   const [numPages, setNumPages] = useState(0);
+
+  // Pan only in select mode, and never when the click lands on an annotation
+  // shape (those have pointer-events; empty area passes through to here).
+  const canPan = (e: React.MouseEvent) =>
+    tool === "select" && !(e.target as Element).closest("svg[data-annotations]");
 
   if (!file)
     return (
@@ -33,8 +39,8 @@ export function Viewer({ docBytes }: { docBytes: Uint8Array | null }) {
     <div className="relative flex flex-1 flex-col overflow-hidden bg-muted/30">
       <div
         className="flex flex-1 items-center justify-center overflow-auto p-8"
-        style={{ cursor: dragStart ? "grabbing" : "grab" }}
-        onMouseDown={(e) => setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y })}
+        style={{ cursor: dragStart ? "grabbing" : tool === "select" ? "grab" : "default" }}
+        onMouseDown={(e) => canPan(e) && setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y })}
         onMouseMove={(e) => dragStart && setPan({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y })}
         onMouseUp={() => setDragStart(null)}
         onMouseLeave={() => setDragStart(null)}
@@ -46,14 +52,22 @@ export function Viewer({ docBytes }: { docBytes: Uint8Array | null }) {
             onLoadSuccess={({ numPages: n }) => setNumPages(n)}
           >
             {pageNumber <= numPages ? (
-              <Page
-                pageNumber={pageNumber}
-                scale={zoom}
-                renderTextLayer
-                renderAnnotationLayer={false}
-                loading={<Skeleton className="h-[600px] w-[450px]" />}
-                className="shadow-lg"
-              />
+              <div className="relative inline-block shadow-lg">
+                <Page
+                  pageNumber={pageNumber}
+                  scale={zoom}
+                  renderTextLayer={tool === "select"}
+                  renderAnnotationLayer={false}
+                  loading={<Skeleton className="h-[600px] w-[450px]" />}
+                  onLoadSuccess={(p) => {
+                    const vp = p.getViewport({ scale: 1 });
+                    setDims({ w: vp.width, h: vp.height });
+                  }}
+                />
+                {currentPageId && dims && (
+                  <AnnotationLayer pageId={currentPageId} wPts={dims.w} hPts={dims.h} />
+                )}
+              </div>
             ) : (
               <Skeleton className="h-[600px] w-[450px]" />
             )}

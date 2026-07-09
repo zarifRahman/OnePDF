@@ -8,10 +8,11 @@ import { Toolbar } from "@/components/toolbar/Toolbar";
 import { ThumbnailList } from "@/components/sidebar/ThumbnailList";
 import { Viewer } from "@/components/viewer/Viewer";
 import { Dropzone } from "@/components/upload/Dropzone";
+import { PropertiesPanel } from "@/components/editor/PropertiesPanel";
 
 export function Workspace() {
   useKeyboardShortcuts();
-  const { files, pages } = useDocStore();
+  const { files, pages, tool, selectedId } = useDocStore();
   const [docBytes, setDocBytes] = useState<Uint8Array | null>(null);
 
   // Re-serialize whenever the descriptor model changes so viewer + thumbnails
@@ -51,6 +52,7 @@ export function Workspace() {
             <ThumbnailList docBytes={docBytes} />
           </aside>
           <Viewer docBytes={docBytes} />
+          {(tool !== "select" || selectedId != null) && <PropertiesPanel />}
         </div>
       )}
     </div>
