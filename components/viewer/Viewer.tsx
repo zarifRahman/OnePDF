@@ -18,9 +18,10 @@ export function Viewer({ docBytes }: { docBytes: Uint8Array | null }) {
   };
 
   // Own copy: pdf.js detaches the buffer it receives (see ThumbnailItem).
-  const data = useMemo(() => docBytes?.slice(0) ?? null, [docBytes]);
+  // Memoized file object so react-pdf doesn't reload every render.
+  const file = useMemo(() => (docBytes ? { data: docBytes.slice(0) } : null), [docBytes]);
 
-  if (!data)
+  if (!file)
     return (
       <div className="grid flex-1 place-items-center text-muted-foreground">No page selected</div>
     );
@@ -36,7 +37,7 @@ export function Viewer({ docBytes }: { docBytes: Uint8Array | null }) {
         onMouseLeave={() => setDragStart(null)}
       >
         <div style={{ transform: `translate(${pan.x}px, ${pan.y}px)` }}>
-          <Document file={{ data }} loading={<Skeleton className="h-[600px] w-[450px]" />}>
+          <Document file={file} loading={<Skeleton className="h-[600px] w-[450px]" />}>
             <Page
               pageNumber={pageNumber}
               scale={zoom}

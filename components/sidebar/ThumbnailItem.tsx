@@ -60,7 +60,8 @@ export function ThumbnailItem({
 
   // pdf.js transfers (detaches) the buffer to its worker. Give this Document its
   // own copy so it doesn't neuter the shared docBytes used by other Documents.
-  const data = useMemo(() => docBytes?.slice(0) ?? null, [docBytes]);
+  // Memoize the whole file object so react-pdf doesn't reload every render.
+  const file = useMemo(() => (docBytes ? { data: docBytes.slice(0) } : null), [docBytes]);
 
   return (
     <div
@@ -79,8 +80,8 @@ export function ThumbnailItem({
         }`}
       >
         <div {...attributes} {...listeners} className="flex cursor-grab justify-center">
-          {visible && data ? (
-            <Document file={{ data }} loading={<Skel />}>
+          {visible && file ? (
+            <Document file={file} loading={<Skel />}>
               <Page
                 pageNumber={pageNumber}
                 width={140}
