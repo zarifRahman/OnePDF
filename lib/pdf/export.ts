@@ -45,6 +45,9 @@ async function drawAnnotation(
     case "highlight":
       page.drawRectangle({ x: a.x, y: H - a.y - a.h, width: a.w, height: a.h, color, opacity: 0.35 });
       break;
+    case "whiteout":
+      page.drawRectangle({ x: a.x, y: H - a.y - a.h, width: a.w, height: a.h, color });
+      break;
     case "image": {
       const bytes = Uint8Array.from(atob(a.dataUrl.split(",")[1]), (c) => c.charCodeAt(0));
       const img = a.mime.includes("png") ? await out.embedPng(bytes) : await out.embedJpg(bytes);

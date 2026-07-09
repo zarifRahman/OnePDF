@@ -2,7 +2,7 @@
 import { useRef, useState } from "react";
 import { useDocStore } from "@/store/document";
 import { uuid } from "@/lib/utils";
-import type { Annotation, Tool } from "@/types";
+import type { Annotation, Tool, EditTarget } from "@/types";
 
 type Pt = [number, number];
 const CREATE_TOOLS: Tool[] = ["draw", "highlight", "underline", "rect", "circle", "line"];
@@ -14,6 +14,7 @@ function translate(a: Annotation, dx: number, dy: number): Annotation {
     case "rect":
     case "circle":
     case "highlight":
+    case "whiteout":
     case "image":
       return { ...a, x: a.x + dx, y: a.y + dy };
     case "line":
@@ -32,6 +33,7 @@ function bbox(a: Annotation): [number, number, number, number] {
     case "rect":
     case "circle":
     case "highlight":
+    case "whiteout":
     case "image":
       return [a.x, a.y, a.w, a.h];
     case "line":
@@ -65,12 +67,24 @@ function Shape({ a }: { a: Annotation }) {
       return <line x1={a.x1} y1={a.y1} x2={a.x2} y2={a.y2} stroke={a.color} strokeWidth={a.strokeWidth} />;
     case "highlight":
       return <rect x={a.x} y={a.y} width={a.w} height={a.h} fill={a.color} opacity={0.35} />;
+    case "whiteout":
+      return <rect x={a.x} y={a.y} width={a.w} height={a.h} fill={a.color} />;
     case "image":
       return <image href={a.dataUrl} x={a.x} y={a.y} width={a.w} height={a.h} preserveAspectRatio="none" />;
   }
 }
 
-export function AnnotationLayer({ pageId, wPts, hPts }: { pageId: string; wPts: number; hPts: number }) {
+export function AnnotationLayer({
+  pageId,
+  wPts,
+  hPts,
+  editTargets = [],
+}: {
+  pageId: string;
+  wPts: number;
+  hPts: number;
+  editTargets?: EditTarget[];
+}) {
   const { annotations, tool, style, selectedId, select, addAnnotation, updateAnnotation } = useDocStore();
   const svgRef = useRef<SVGSVGElement>(null);
   const [draft, setDraft] = useState<Annotation | null>(null);
@@ -88,11 +102,22 @@ export function AnnotationLayer({ pageId, wPts, hPts }: { pageId: string; wPts: 
     return [t.x, t.y];
   };
 
+  // Whiteout + retype an existing text span: cover it with white, redraw text.
+  // ponytail: background assumed white, font -> Helvetica, new text black.
+  const editText = (t: EditTarget) => {
+    const next = window.prompt("Edit text:", t.text);
+    if (next === null) return;
+    addAnnotation({ id: uuid(), pageId, type: "whiteout", color: "#ffffff", x: t.x, y: t.y, w: t.w, h: t.h });
+    if (next.trim())
+      addAnnotation({ id: uuid(), pageId, type: "text", x: t.x, y: t.y, text: next, size: t.size, color: "#000000" });
+  };
+
   const onBackgroundDown = (e: React.PointerEvent) => {
     if (tool === "select") {
       select(null);
       return;
     }
+    if (tool === "edittext" || tool === "image") return; // clicks handled elsewhere
     const [x, y] = getPt(e);
     svgRef.current?.setPointerCapture(e.pointerId);
 
@@ -163,7 +188,14 @@ export function AnnotationLayer({ pageId, wPts, hPts }: { pageId: string; wPts: 
     else commitDraft();
   };
 
-  const cursor = tool === "select" ? "default" : CREATE_TOOLS.includes(tool) || tool === "text" ? "crosshair" : "default";
+  const cursor =
+    tool === "select"
+      ? "default"
+      : tool === "edittext"
+        ? "text"
+        : CREATE_TOOLS.includes(tool) || tool === "text"
+          ? "crosshair"
+          : "default";
 
   return (
     <svg
@@ -191,6 +223,24 @@ export function AnnotationLayer({ pageId, wPts, hPts }: { pageId: string; wPts: 
         </g>
       ))}
       {draft && <Shape a={draft} />}
+
+      {tool === "edittext" &&
+        editTargets.map((t, i) => (
+          <rect
+            key={i}
+            x={t.x}
+            y={t.y}
+            width={t.w}
+            height={t.h}
+            fill="#3b82f6"
+            fillOpacity={0.08}
+            stroke="#3b82f6"
+            strokeOpacity={0.5}
+            strokeWidth={0.5}
+            style={{ cursor: "text" }}
+            onClick={() => editText(t)}
+          />
+        ))}
     </svg>
   );
 }

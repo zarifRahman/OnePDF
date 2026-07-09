@@ -1,16 +1,38 @@
 "use client";
 import { useMemo, useState } from "react";
 import { Document, Page } from "react-pdf";
+import type { PDFPageProxy } from "pdfjs-dist";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useDocStore } from "@/store/document";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AnnotationLayer } from "@/components/editor/AnnotationLayer";
+import type { EditTarget } from "@/types";
 
 export function Viewer({ docBytes }: { docBytes: Uint8Array | null }) {
   const { pages, currentPageId, setCurrent, zoom, tool } = useDocStore();
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
   const [dims, setDims] = useState<{ w: number; h: number } | null>(null);
+  const [targets, setTargets] = useState<EditTarget[]>([]);
+
+  // Pull existing text spans (for the Edit-text tool) once the page loads.
+  const loadPage = async (p: PDFPageProxy) => {
+    const vp = p.getViewport({ scale: 1 });
+    setDims({ w: vp.width, h: vp.height });
+    try {
+      const tc = await p.getTextContent();
+      const found: EditTarget[] = [];
+      for (const it of tc.items) {
+        if (!("str" in it) || !it.str.trim()) continue;
+        const [, , , d, e, f] = it.transform;
+        const size = it.height || Math.abs(d) || 12;
+        found.push({ x: e, y: vp.height - f - size, w: it.width, h: size, text: it.str, size });
+      }
+      setTargets(found);
+    } catch {
+      setTargets([]);
+    }
+  };
 
   const idx = pages.findIndex((p) => p.id === currentPageId);
   const pageNumber = idx >= 0 ? idx + 1 : 1;
@@ -59,13 +81,15 @@ export function Viewer({ docBytes }: { docBytes: Uint8Array | null }) {
                   renderTextLayer={tool === "select"}
                   renderAnnotationLayer={false}
                   loading={<Skeleton className="h-[600px] w-[450px]" />}
-                  onLoadSuccess={(p) => {
-                    const vp = p.getViewport({ scale: 1 });
-                    setDims({ w: vp.width, h: vp.height });
-                  }}
+                  onLoadSuccess={loadPage}
                 />
                 {currentPageId && dims && (
-                  <AnnotationLayer pageId={currentPageId} wPts={dims.w} hPts={dims.h} />
+                  <AnnotationLayer
+                    pageId={currentPageId}
+                    wPts={dims.w}
+                    hPts={dims.h}
+                    editTargets={targets}
+                  />
                 )}
               </div>
             ) : (

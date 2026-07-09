@@ -12,6 +12,7 @@ import {
   FileStack,
   MousePointer2,
   Type,
+  TextCursorInput,
   Pencil,
   Highlighter,
   Underline,
@@ -56,6 +57,7 @@ function Btn({
 const TOOLS: { tool: Tool; icon: React.ReactNode; label: string }[] = [
   { tool: "select", icon: <MousePointer2 className="h-4 w-4" />, label: "Select / move" },
   { tool: "text", icon: <Type className="h-4 w-4" />, label: "Add text" },
+  { tool: "edittext", icon: <TextCursorInput className="h-4 w-4" />, label: "Edit existing text" },
   { tool: "draw", icon: <Pencil className="h-4 w-4" />, label: "Freehand draw" },
   { tool: "highlight", icon: <Highlighter className="h-4 w-4" />, label: "Highlight" },
   { tool: "underline", icon: <Underline className="h-4 w-4" />, label: "Underline" },

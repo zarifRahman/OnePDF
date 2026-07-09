@@ -23,6 +23,7 @@ export type SourceFile = {
 export type Tool =
   | "select"
   | "text"
+  | "edittext"
   | "draw"
   | "highlight"
   | "underline"
@@ -39,6 +40,8 @@ export type RectAnnotation = Base & { type: "rect"; x: number; y: number; w: num
 export type CircleAnnotation = Base & { type: "circle"; x: number; y: number; w: number; h: number; strokeWidth: number };
 export type LineAnnotation = Base & { type: "line" | "underline"; x1: number; y1: number; x2: number; y2: number; strokeWidth: number };
 export type HighlightAnnotation = Base & { type: "highlight"; x: number; y: number; w: number; h: number };
+// Opaque cover for whiteout+retype editing of existing content. `color` is the fill.
+export type WhiteoutAnnotation = Base & { type: "whiteout"; x: number; y: number; w: number; h: number };
 export type ImageAnnotation = Base & { type: "image"; x: number; y: number; w: number; h: number; dataUrl: string; mime: string };
 
 export type Annotation =
@@ -48,6 +51,10 @@ export type Annotation =
   | CircleAnnotation
   | LineAnnotation
   | HighlightAnnotation
+  | WhiteoutAnnotation
   | ImageAnnotation;
+
+// A clickable existing-text span discovered via pdf.js, in PDF points (top-left).
+export type EditTarget = { x: number; y: number; w: number; h: number; text: string; size: number };
 
 export type Style = { color: string; strokeWidth: number; fontSize: number };
