@@ -51,4 +51,22 @@ describe("exportPdf", () => {
     ]);
     expect((await PDFDocument.load(out)).getPageCount()).toBe(2);
   });
+
+  it("bakes text/shape annotations + page numbers without corrupting the doc", async () => {
+    const a = await makeSource("a", 1);
+    const pd = p({ fileId: "a", sourceIndex: 0 });
+    const out = await exportPdf(
+      { a },
+      [pd],
+      [
+        { id: "1", pageId: pd.id, type: "text", x: 10, y: 10, text: "hi", size: 12, color: "#e11d48" },
+        { id: "2", pageId: pd.id, type: "rect", x: 20, y: 20, w: 40, h: 30, strokeWidth: 2, color: "#2563eb" },
+        { id: "3", pageId: pd.id, type: "draw", points: [[0, 0], [10, 10], [20, 5]], strokeWidth: 3, color: "#000000" },
+      ],
+      true,
+    );
+    const doc = await PDFDocument.load(out);
+    expect(doc.getPageCount()).toBe(1);
+    expect(out.length).toBeGreaterThan(0);
+  });
 });
