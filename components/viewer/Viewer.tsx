@@ -21,6 +21,9 @@ export function Viewer({ docBytes }: { docBytes: Uint8Array | null }) {
   // Memoized file object so react-pdf doesn't reload every render.
   const file = useMemo(() => (docBytes ? { data: docBytes.slice(0) } : null), [docBytes]);
 
+  // Gate <Page> on the loaded doc's count — docBytes lags the pages array.
+  const [numPages, setNumPages] = useState(0);
+
   if (!file)
     return (
       <div className="grid flex-1 place-items-center text-muted-foreground">No page selected</div>
@@ -37,15 +40,23 @@ export function Viewer({ docBytes }: { docBytes: Uint8Array | null }) {
         onMouseLeave={() => setDragStart(null)}
       >
         <div style={{ transform: `translate(${pan.x}px, ${pan.y}px)` }}>
-          <Document file={file} loading={<Skeleton className="h-[600px] w-[450px]" />}>
-            <Page
-              pageNumber={pageNumber}
-              scale={zoom}
-              renderTextLayer
-              renderAnnotationLayer={false}
-              loading={<Skeleton className="h-[600px] w-[450px]" />}
-              className="shadow-lg"
-            />
+          <Document
+            file={file}
+            loading={<Skeleton className="h-[600px] w-[450px]" />}
+            onLoadSuccess={({ numPages: n }) => setNumPages(n)}
+          >
+            {pageNumber <= numPages ? (
+              <Page
+                pageNumber={pageNumber}
+                scale={zoom}
+                renderTextLayer
+                renderAnnotationLayer={false}
+                loading={<Skeleton className="h-[600px] w-[450px]" />}
+                className="shadow-lg"
+              />
+            ) : (
+              <Skeleton className="h-[600px] w-[450px]" />
+            )}
           </Document>
         </div>
       </div>

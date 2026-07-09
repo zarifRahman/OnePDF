@@ -63,6 +63,10 @@ export function ThumbnailItem({
   // Memoize the whole file object so react-pdf doesn't reload every render.
   const file = useMemo(() => (docBytes ? { data: docBytes.slice(0) } : null), [docBytes]);
 
+  // docBytes re-export lags the pages array by a tick, so pageNumber can briefly
+  // exceed the loaded doc. Gate <Page> on the actually-loaded page count.
+  const [numPages, setNumPages] = useState(0);
+
   return (
     <div
       ref={setNodeRef}
@@ -81,14 +85,22 @@ export function ThumbnailItem({
       >
         <div {...attributes} {...listeners} className="flex cursor-grab justify-center">
           {visible && file ? (
-            <Document file={file} loading={<Skel />}>
-              <Page
-                pageNumber={pageNumber}
-                width={140}
-                renderTextLayer={false}
-                renderAnnotationLayer={false}
-                loading={<Skel />}
-              />
+            <Document
+              file={file}
+              loading={<Skel />}
+              onLoadSuccess={({ numPages: n }) => setNumPages(n)}
+            >
+              {pageNumber <= numPages ? (
+                <Page
+                  pageNumber={pageNumber}
+                  width={140}
+                  renderTextLayer={false}
+                  renderAnnotationLayer={false}
+                  loading={<Skel />}
+                />
+              ) : (
+                <Skel />
+              )}
             </Document>
           ) : (
             <Skel />
