@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Document, Page } from "react-pdf";
@@ -58,6 +58,10 @@ export function ThumbnailItem({
 
   const active = currentPageId === page.id;
 
+  // pdf.js transfers (detaches) the buffer to its worker. Give this Document its
+  // own copy so it doesn't neuter the shared docBytes used by other Documents.
+  const data = useMemo(() => docBytes?.slice(0) ?? null, [docBytes]);
+
   return (
     <div
       ref={setNodeRef}
@@ -75,8 +79,8 @@ export function ThumbnailItem({
         }`}
       >
         <div {...attributes} {...listeners} className="flex cursor-grab justify-center">
-          {visible && docBytes ? (
-            <Document file={{ data: docBytes }} loading={<Skel />}>
+          {visible && data ? (
+            <Document file={{ data }} loading={<Skel />}>
               <Page
                 pageNumber={pageNumber}
                 width={140}
