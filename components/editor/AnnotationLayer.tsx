@@ -329,6 +329,8 @@ export function AnnotationLayer({
   >(null);
   const [editValue, setEditValue] = useState("");
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
+  // The live editor element, so a commit can read the value the user sees.
+  const editorRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
 
   const beginEdit = (t: EditTarget) => {
     setEdit({ kind: "existing", ...t });
@@ -358,16 +360,20 @@ export function AnnotationLayer({
   const commitEdit = () => {
     const e = edit;
     if (!e) return;
+    // Read the live value from the DOM rather than the controlled state:
+    // the state can lag a keystroke behind, and committing that would drop
+    // the last character the user typed.
+    const value = editorRef.current?.value ?? editValue;
     setEdit(null);
     if (e.kind === "new") {
-      if (editValue.trim())
+      if (value.trim())
         addAnnotation({
           id: uuid(),
           pageId,
           type: "text",
           x: e.x,
           y: e.y,
-          text: editValue,
+          text: value,
           size: e.size,
           color: style.color,
           opacity: style.opacity,
@@ -379,16 +385,16 @@ export function AnnotationLayer({
       return;
     }
     if (e.kind === "annotation") {
-      if (!editValue.trim()) deleteAnnotation(e.id);
-      else updateAnnotation(e.id, { text: editValue } as Partial<Annotation>);
+      if (!value.trim()) deleteAnnotation(e.id);
+      else updateAnnotation(e.id, { text: value } as Partial<Annotation>);
       return;
     }
     if (e.kind === "note") {
-      if (!editValue.trim()) deleteAnnotation(e.id);
-      else updateAnnotation(e.id, { text: editValue } as Partial<Annotation>);
+      if (!value.trim()) deleteAnnotation(e.id);
+      else updateAnnotation(e.id, { text: value } as Partial<Annotation>);
       return;
     }
-    if (editValue === e.text) return; // unchanged: leave original untouched
+    if (value === e.text) return; // unchanged: leave original untouched
     addAnnotation({
       id: uuid(),
       pageId,
@@ -399,14 +405,14 @@ export function AnnotationLayer({
       w: e.w + 2,
       h: e.h + 2,
     });
-    if (editValue.trim())
+    if (value.trim())
       addAnnotation({
         id: uuid(),
         pageId,
         type: "text",
         x: e.x,
         y: e.y,
-        text: editValue,
+        text: value,
         size: e.size,
         color: "#000000",
         fontFamily: e.serif ? "Times" : "Helvetica",
@@ -766,6 +772,7 @@ export function AnnotationLayer({
             {edit.kind === "note" ? (
               <textarea
                 autoFocus
+                ref={editorRef as React.RefObject<HTMLTextAreaElement>}
                 placeholder="Note…"
                 value={editValue}
                 onChange={(e) => setEditValue(e.target.value)}
@@ -792,9 +799,16 @@ export function AnnotationLayer({
             ) : (
               <input
                 autoFocus
+                ref={editorRef as React.RefObject<HTMLInputElement>}
                 placeholder={edit.kind === "new" ? "Type text…" : undefined}
                 value={editValue}
                 onChange={(e) => setEditValue(e.target.value)}
+                onFocus={(e) => {
+                  // Editing a line in the PDF starts with the whole line
+                  // selected, so typing replaces it. Clicking again inside
+                  // the field drops the caret where the user wants it.
+                  if (edit.kind === "existing") e.currentTarget.select();
+                }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
                     e.preventDefault();

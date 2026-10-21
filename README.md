@@ -71,7 +71,9 @@ pages.
 - **Watermark** — text, size, colour, opacity and angle across every page
 
 **Edit / annotate**
-- **Text** anywhere, plus **edit existing text** in the PDF (click a line)
+- **Text** anywhere, plus **edit existing text** in the PDF — pick the text
+  tool, click a line and type; the line is selected for you and the original
+  is covered on export
 - **Freehand draw**, **highlight**, **underline**, **line**, **arrow**
 - **Shapes** (rectangle, circle) with stroke *and* fill
 - **Images** (insert a PNG/JPEG, or draw a signature and drop it on the page),
