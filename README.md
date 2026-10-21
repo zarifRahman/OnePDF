@@ -98,6 +98,9 @@ pages.
 
 **Everywhere**
 - **Undo / redo** for every edit, with the action named ("Undid: Rotate page")
+- **One click home** — the OnePDF logo in the header saves your work and takes
+  you back to the home screen, where the document waits under *Recent
+  documents*
 - **Light / dark** mode
 - **Keyboard shortcuts** for every tool (`?` shows the list)
 - 100% in-browser — nothing is uploaded to any server
