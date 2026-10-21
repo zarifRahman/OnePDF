@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import {
   FileStack,
+  Files,
   Pencil,
   Gauge,
   Scissors,
@@ -21,7 +22,14 @@ import { Dropzone } from "@/components/upload/Dropzone";
 import { listDocuments, type StoredDocument } from "@/lib/db/storage";
 import { useDocStore } from "@/store/document";
 
-export type Task = "organise" | "edit" | "compress" | "split" | "watermark" | "redact";
+export type Task =
+  | "organise"
+  | "merge"
+  | "edit"
+  | "compress"
+  | "split"
+  | "watermark"
+  | "redact";
 
 const TASKS: {
   id: Task;
@@ -34,6 +42,12 @@ const TASKS: {
     icon: <FileStack className="h-5 w-5" />,
     title: "Organise pages",
     blurb: "Merge, reorder, rotate, duplicate and delete pages",
+  },
+  {
+    id: "merge",
+    icon: <Files className="h-5 w-5" />,
+    title: "Merge PDFs",
+    blurb: "Combine several PDFs into a single document",
   },
   {
     id: "edit",

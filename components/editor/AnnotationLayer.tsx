@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { useDocStore } from "@/store/document";
 import { uuid } from "@/lib/utils";
 import { SignaturePad } from "@/components/editor/SignaturePad";
+import { emitShortcut } from "@/lib/hooks/useKeyboardShortcuts";
 import type {
   Annotation,
   Tool,
@@ -418,7 +419,11 @@ export function AnnotationLayer({
       select(null);
       return;
     }
-    if (tool === "image") return; // handled elsewhere
+    if (tool === "image") {
+      // The toolbar owns the file picker, so ask it to open one.
+      emitShortcut("insert-image");
+      return;
+    }
     if (tool === "signature") {
       setSigning(true);
       return;

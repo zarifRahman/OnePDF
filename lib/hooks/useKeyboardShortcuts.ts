@@ -9,7 +9,7 @@ import type { Tool } from "@/types";
 // without prop-drilling.
 const bus = new EventTarget();
 
-export type ShortcutEvent = "search" | "shortcuts" | "new";
+export type ShortcutEvent = "search" | "shortcuts" | "new" | "insert-image";
 
 export function emitShortcut(type: ShortcutEvent) {
   bus.dispatchEvent(new Event(type));
@@ -33,7 +33,6 @@ const TOOL_KEYS: Record<string, Tool> = {
   a: "arrow",
   n: "note",
   d: "redact",
-  i: "image",
   s: "signature",
 };
 
@@ -117,6 +116,11 @@ export function useKeyboardShortcuts() {
         if (n >= 0 && n < s.pages.length) s.setCurrent(s.pages[n].id);
       } else if (e.key === "?" && !mod) {
         emitShortcut("shortcuts");
+      } else if (!mod && !e.altKey && key === "i") {
+        // Inserting an image opens a file picker, so it is an action rather
+        // than a tool: the toolbar owns the picker.
+        e.preventDefault();
+        emitShortcut("insert-image");
       } else if (!mod && !e.altKey && TOOL_KEYS[key]) {
         s.setTool(TOOL_KEYS[key]);
       }

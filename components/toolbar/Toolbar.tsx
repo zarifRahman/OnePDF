@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import { useTheme } from "next-themes";
 import {
   Undo2,
@@ -21,6 +21,7 @@ import {
   Minus,
   MoveRight,
   Image as ImageIcon,
+  ImageOff,
   Hash,
   StickyNote,
   PenTool,
@@ -43,6 +44,8 @@ import { useDocStore } from "@/store/document";
 import { uuid } from "@/lib/utils";
 import { deleteDocument, getWorkspaceId } from "@/lib/db/storage";
 import { Dropzone } from "@/components/upload/Dropzone";
+import { ingestImageAsPage, mergePdf } from "@/lib/pdf/ingest";
+import { onShortcut } from "@/lib/hooks/useKeyboardShortcuts";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -80,7 +83,13 @@ function Btn({
   );
 }
 
-const TOOLS: { tool: Tool; icon: React.ReactNode; label: string }[] = [
+const TOOLS: {
+  tool: Tool;
+  icon: React.ReactNode;
+  label: string;
+  /** An action opens a picker instead of arming a drawing tool. */
+  action?: boolean;
+}[] = [
   { tool: "select", icon: <MousePointer2 className="h-4 w-4" />, label: "Select / move  (V)" },
   { tool: "text", icon: <Type className="h-4 w-4" />, label: "Text — click existing text to edit  (T)" },
   { tool: "draw", icon: <Pencil className="h-4 w-4" />, label: "Freehand draw  (P)" },
@@ -92,7 +101,7 @@ const TOOLS: { tool: Tool; icon: React.ReactNode; label: string }[] = [
   { tool: "arrow", icon: <MoveRight className="h-4 w-4" />, label: "Arrow  (A)" },
   { tool: "note", icon: <StickyNote className="h-4 w-4" />, label: "Sticky note  (N)" },
   { tool: "redact", icon: <SquareDashed className="h-4 w-4" />, label: "Redact — burns in on export  (D)" },
-  { tool: "image", icon: <ImageIcon className="h-4 w-4" />, label: "Insert image  (I)" },
+  { tool: "image", icon: <ImageIcon className="h-4 w-4" />, label: "Insert image  (I)", action: true },
   { tool: "signature", icon: <PenTool className="h-4 w-4" />, label: "Insert signature  (S)" },
 ];
 
@@ -109,6 +118,7 @@ export type DialogId =
   | "compress"
   | "export"
   | "margins"
+  | "removeimages"
   | "shortcuts";
 
 export function Toolbar({
@@ -139,7 +149,12 @@ export function Toolbar({
   } = useDocStore();
   const { theme, setTheme } = useTheme();
   const imgInput = useRef<HTMLInputElement>(null);
+  const pageImgInput = useRef<HTMLInputElement>(null);
+  const mergeInput = useRef<HTMLInputElement>(null);
   const hasDoc = pages.length > 0;
+
+  // The "I" shortcut and the toolbar button both open the image picker.
+  useEffect(() => onShortcut("insert-image", () => imgInput.current?.click()), []);
 
   // Image / signature insert: read file, size to 200pt wide keeping aspect,  // drop onto the current page. Move/resize afterwards with the select tool.
   const insertImage = async (file: File) => {
@@ -167,6 +182,9 @@ export function Toolbar({
       dataUrl,
       mime: file.type,
     });
+    // Hand the user straight to the select tool so the new image can be
+    // moved and resized right away.
+    setTool("select");
     toast.success("Image inserted");
   };
 
@@ -215,8 +233,11 @@ export function Toolbar({
             <Btn
               key={t.tool}
               title={t.label}
-              active={tool === t.tool}
-              onClick={() => setTool(t.tool)}
+              active={t.action ? undefined : tool === t.tool}
+              onClick={() => {
+                if (t.action) imgInput.current?.click();
+                else setTool(t.tool);
+              }}
             >
               {t.icon}
             </Btn>
@@ -226,9 +247,41 @@ export function Toolbar({
             type="file"
             accept="image/png,image/jpeg"
             hidden
-            onChange={(e) => e.target.files?.[0] && insertImage(e.target.files[0])}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              e.target.value = "";
+              if (file) void insertImage(file);
+            }}
           />
         </div>
+      )}
+
+      {hasDoc && (
+        <input
+          ref={pageImgInput}
+          type="file"
+          accept="image/png,image/jpeg"
+          hidden
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            e.target.value = "";
+            if (file) void ingestImageAsPage(file);
+          }}
+        />
+      )}
+
+      {hasDoc && (
+        <input
+          ref={mergeInput}
+          type="file"
+          accept="application/pdf,.pdf"
+          hidden
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            e.target.value = "";
+            if (file) void mergePdf(file);
+          }}
+        />
       )}
 
       <div className="ml-auto flex items-center gap-1">
@@ -282,6 +335,18 @@ export function Toolbar({
       {hasDoc && (
         <div className="flex items-center gap-1 border-l pl-2">
           <MenuButton label="Pages" icon={<ChevronDown className="h-4 w-4" />}>
+            <MenuItem
+              onClick={() => mergeInput.current?.click()}
+              icon={<FileStack className="h-4 w-4" />}
+            >
+              Merge with another PDF…
+            </MenuItem>
+            <MenuItem
+              onClick={() => pageImgInput.current?.click()}
+              icon={<ImageIcon className="h-4 w-4" />}
+            >
+              Insert image as page…
+            </MenuItem>
             <MenuItem onClick={() => onOpenDialog("split")} icon={<Scissors className="h-4 w-4" />}>
               Split into separate files…
             </MenuItem>
@@ -301,6 +366,12 @@ export function Toolbar({
             </MenuItem>
             <MenuItem onClick={() => onOpenDialog("compress")} icon={<Gauge className="h-4 w-4" />}>
               Compress / grayscale / redact…
+            </MenuItem>
+            <MenuItem
+              onClick={() => onOpenDialog("removeimages")}
+              icon={<ImageOff className="h-4 w-4" />}
+            >
+              Remove images from this page…
             </MenuItem>
             <MenuItem
               onClick={() => {
