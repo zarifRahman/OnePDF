@@ -53,12 +53,20 @@ export async function extractLines(page: PDFPageProxy): Promise<TextLine[]> {
     const family = tc.styles?.[it.fontName]?.fontFamily ?? "";
     const serif = /serif|times|georgia|roman|garamond/i.test(family) && !/sans/i.test(family);
     const bold = /bold|black|heavy|demi|semibold/i.test(`${it.fontName ?? ""} ${family}`);
-    if (!cur) cur = { x0: e, x1: e + it.width, baseline: f, size, text: it.str, serif, bold };
-    else {
-      cur.x1 = e + it.width;
-      cur.size = Math.max(cur.size, size);
-      cur.text += it.str;
-      cur.bold ||= bold;
+    // pdf.js marks the end of a line with an *empty* item that carries the
+    // hasEOL flag. It has no text and no width, so it must not be treated as
+    // a run — otherwise it would collapse the line's width to zero and the
+    // line would stop being clickable.
+    if (it.str) {
+      if (!cur) {
+        cur = { x0: e, x1: e + it.width, baseline: f, size, text: it.str, serif, bold };
+      } else {
+        cur.x0 = Math.min(cur.x0, e);
+        cur.x1 = Math.max(cur.x1, e + it.width);
+        cur.size = Math.max(cur.size, size);
+        cur.text += it.str;
+        cur.bold ||= bold;
+      }
     }
     if (it.hasEOL) flush();
   }
