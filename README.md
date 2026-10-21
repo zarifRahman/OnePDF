@@ -6,8 +6,9 @@ your machine.
 
 [![Live demo](https://img.shields.io/badge/Live%20demo-000000?style=flat-square&logo=vercel&logoColor=white)](https://onepdf-three.vercel.app)
 [![Deploy with Vercel](https://img.shields.io/badge/Deploy-Vercel-000000?style=flat-square&logo=vercel&logoColor=white)](https://vercel.com/new/clone?repository-url=https://github.com/zarifRahman/OnePDF)
+[![GitHub repo](https://img.shields.io/badge/Source-GitHub-181717?style=flat-square&logo=github&logoColor=white)](https://github.com/zarifRahman/OnePDF)
 
-**Try it live → https://onepdf-three.vercel.app**
+**Try it live → https://onepdf-three.vercel.app** · **Source code → https://github.com/zarifRahman/OnePDF**
 
 > **Status:** v2 — task-first onboarding, page management, a full annotation
 > editor, document tools (watermark / compress / redact / split), in-document
@@ -96,9 +97,10 @@ pages.
 
 ## Getting started
 
-Live demo: **[https://onepdf-three.vercel.app](https://onepdf-three.vercel.app)**
-(deployed from this repo with Vercel — every tool runs in your browser, so the
-deployment only serves the static app).
+- **Live demo** → https://onepdf-three.vercel.app (deployed from this repo with
+  Vercel — every tool runs in your browser, so the deployment only serves the
+  static app)
+- **Source code** → https://github.com/zarifRahman/OnePDF
 
 Prerequisites: **Node 20.9+** and **pnpm** (npm also works).
 
