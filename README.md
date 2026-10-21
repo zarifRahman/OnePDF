@@ -4,9 +4,45 @@ A modern, fully client-side PDF manager. Organise, merge, edit, annotate, sign,
 compress, split and export PDFs entirely in your browser — no files ever leave
 your machine.
 
+[![Live demo](https://img.shields.io/badge/Live%20demo-000000?style=flat-square&logo=vercel&logoColor=white)](https://onepdf-three.vercel.app)
+[![Deploy with Vercel](https://img.shields.io/badge/Deploy-Vercel-000000?style=flat-square&logo=vercel&logoColor=white)](https://vercel.com/new/clone?repository-url=https://github.com/zarifRahman/OnePDF)
+
+**Try it live → https://onepdf-three.vercel.app**
+
 > **Status:** v2 — task-first onboarding, page management, a full annotation
 > editor, document tools (watermark / compress / redact / split), in-document
 > search and local autosave. All client-side.
+
+## Screenshots
+
+**Task-first home screen** — pick what you want to do, drop a PDF in, and the
+app opens straight into that tool.
+
+![OnePDF home screen with task cards](docs/screenshots/01-welcome.png)
+
+**Editor** — tool rail, page rail, live annotation overlay, contextual
+properties panel, status bar.
+
+![OnePDF editor with annotations and the properties panel](docs/screenshots/02-editor.png)
+
+**Search inside the document** — every match is highlighted, with next/previous
+navigation.
+
+![OnePDF search with highlighted matches](docs/screenshots/03-search.png)
+
+**Dark mode** — the whole shell follows the theme.
+
+![OnePDF in dark mode](docs/screenshots/04-dark.png)
+
+**Export** — whole document, current page, selection or a custom range, as PDF
+or as PNG/JPG images.
+
+![OnePDF export dialog](docs/screenshots/05-export.png)
+
+**Continuous view** — scroll through the whole document, or switch to facing
+pages.
+
+![OnePDF continuous scroll view](docs/screenshots/06-continuous.png)
 
 ## Features
 
@@ -60,6 +96,10 @@ your machine.
 
 ## Getting started
 
+Live demo: **[https://onepdf-three.vercel.app](https://onepdf-three.vercel.app)**
+(deployed from this repo with Vercel — every tool runs in your browser, so the
+deployment only serves the static app).
+
 Prerequisites: **Node 20.9+** and **pnpm** (npm also works).
 
 ```bash
@@ -88,6 +128,27 @@ npm run dev
 
 > `postinstall` copies the pdf.js worker into `public/` so it is served
 > locally (offline, no CDN).
+
+### Deploy
+
+There is no server, no API and no database — Next.js prerenders the single
+route at build time, so the deployment is just the static app.
+
+```bash
+npm i -g vercel
+vercel --prod          # from the repo root
+```
+
+Or click the **Deploy with Vercel** badge at the top to fork and deploy. The
+live deployment is at https://onepdf-three.vercel.app.
+
+Two things to know about the deployment:
+
+- `postinstall` must run so `public/pdf.worker.min.mjs` exists; Vercel runs it
+  automatically with `pnpm install`.
+- The app is fully client-side, but PDF work is CPU-bound: very large
+  documents can still take a moment to re-serialise in the browser. The
+  Node.js runtime is the right one (the pdf.js worker and pdf-lib both need it).
 
 ## Architecture
 
