@@ -1,9 +1,10 @@
 "use client";
-import { useEffect, useMemo, useRef, useState } from "react";
+
+import { useEffect, useRef, useState } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Document, Page } from "react-pdf";
-import { RotateCw, Trash2, FilePlus } from "lucide-react";
+import { Page } from "react-pdf";
+import { RotateCw, Trash2, FilePlus, Copy } from "lucide-react";
 import { useDocStore } from "@/store/document";
 import type { PageDescriptor } from "@/types";
 
@@ -21,28 +22,27 @@ function IconBtn({
   return (
     <button
       title={title}
+      aria-label={title}
       onClick={onClick}
-      className="rounded bg-background/90 p-1 hover:bg-accent"
+      className="rounded bg-background/90 p-1 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       {children}
     </button>
   );
 }
 
-// docBytes: exported bytes of the whole document; pageNumber is 1-based within it.
 export function ThumbnailItem({
   page,
   pageNumber,
-  docBytes,
 }: {
   page: PageDescriptor;
   pageNumber: number;
-  docBytes: Uint8Array | null;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: page.id,
   });
-  const { currentPageId, setCurrent, rotatePage, deletePage, insertBlankAfter } = useDocStore();
+  const { currentPageId, setCurrent, rotatePages, deletePages, insertBlankAfter, duplicatePages, selectedPageIds, togglePageSelection } =
+    useDocStore();
   const ref = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(false);
 
@@ -57,15 +57,25 @@ export function ThumbnailItem({
   }, []);
 
   const active = currentPageId === page.id;
+  const selected = selectedPageIds.includes(page.id);
 
-  // pdf.js transfers (detaches) the buffer to its worker. Give this Document its
-  // own copy so it doesn't neuter the shared docBytes used by other Documents.
-  // Memoize the whole file object so react-pdf doesn't reload every render.
-  const file = useMemo(() => (docBytes ? { data: docBytes.slice(0) } : null), [docBytes]);
-
-  // docBytes re-export lags the pages array by a tick, so pageNumber can briefly
-  // exceed the loaded doc. Gate <Page> on the actually-loaded page count.
-  const [numPages, setNumPages] = useState(0);
+  // The shell owns a single react-pdf <Document>, so the thumbnail is just a
+  // <Page> inside it — one copy of the bytes and one pdf.js instance for the
+  // whole app instead of one per thumbnail.
+  const onSelect = (e: React.MouseEvent) => {
+    if (e.shiftKey) {
+      e.preventDefault();
+      togglePageSelection(page.id, "range");
+      return;
+    }
+    if (e.metaKey || e.ctrlKey) {
+      e.preventDefault();
+      togglePageSelection(page.id, "toggle");
+      return;
+    }
+    setCurrent(page.id);
+    togglePageSelection(page.id, "single");
+  };
 
   return (
     <div
@@ -78,30 +88,24 @@ export function ThumbnailItem({
     >
       <div
         ref={ref}
-        onClick={() => setCurrent(page.id)}
+        onClick={onSelect}
         className={`group relative rounded-lg border p-1 ${
-          active ? "border-primary ring-1 ring-primary" : "border-border"
+          selected
+            ? "border-primary ring-2 ring-primary/60"
+            : active
+              ? "border-primary ring-1 ring-primary"
+              : "border-border"
         }`}
       >
         <div {...attributes} {...listeners} className="flex cursor-grab justify-center">
-          {visible && file ? (
-            <Document
-              file={file}
+          {visible ? (
+            <Page
+              pageNumber={pageNumber}
+              width={140}
+              renderTextLayer={false}
+              renderAnnotationLayer={false}
               loading={<Skel />}
-              onLoadSuccess={({ numPages: n }) => setNumPages(n)}
-            >
-              {pageNumber <= numPages ? (
-                <Page
-                  pageNumber={pageNumber}
-                  width={140}
-                  renderTextLayer={false}
-                  renderAnnotationLayer={false}
-                  loading={<Skel />}
-                />
-              ) : (
-                <Skel />
-              )}
-            </Document>
+            />
           ) : (
             <Skel />
           )}
@@ -109,15 +113,29 @@ export function ThumbnailItem({
         <span className="absolute bottom-1 left-1 rounded bg-background/80 px-1 text-xs">
           {pageNumber}
         </span>
+        {page.rotation !== 0 && (
+          <span className="absolute bottom-1 right-1 rounded bg-background/80 px-1 text-[10px] text-muted-foreground">
+            {page.rotation}°
+          </span>
+        )}
         <div className="absolute right-1 top-1 flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
           <IconBtn
-            title="Rotate"
+            title="Rotate right"
             onClick={(e) => {
               e.stopPropagation();
-              rotatePage(page.id, 90);
+              rotatePages([page.id], 90);
             }}
           >
             <RotateCw className="h-3.5 w-3.5" />
+          </IconBtn>
+          <IconBtn
+            title="Duplicate page"
+            onClick={(e) => {
+              e.stopPropagation();
+              duplicatePages([page.id]);
+            }}
+          >
+            <Copy className="h-3.5 w-3.5" />
           </IconBtn>
           <IconBtn
             title="Insert blank page after"
@@ -132,7 +150,7 @@ export function ThumbnailItem({
             title="Delete page"
             onClick={(e) => {
               e.stopPropagation();
-              deletePage(page.id);
+              deletePages([page.id]);
             }}
           >
             <Trash2 className="h-3.5 w-3.5" />
