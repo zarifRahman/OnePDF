@@ -14,8 +14,13 @@ import type {
   Margins,
 } from "@/types";
 
-// A history snapshot captures everything an edit can change.
+// A history snapshot captures everything an edit can change. The source files
+// are part of it: operations that rewrite a file (compress, remove images)
+// change the bytes behind a page, so undo has to restore them too. The
+// revision counter rides along so the viewer knows to re-serialise.
 type Snap = {
+  files: Record<string, SourceFile>;
+  filesRev: number;
   pages: PageDescriptor[];
   annotations: Annotation[];
   pageNumbers: PageNumberOptions;
@@ -27,6 +32,8 @@ export type HistoryEntry = { label: string; snap: Snap };
 
 type State = {
   files: Record<string, SourceFile>;
+  /** Bumped whenever the source files change, so the viewer re-serialises. */
+  filesRev: number;
   pages: PageDescriptor[];
   annotations: Annotation[];
   pageNumbers: PageNumberOptions;
@@ -50,6 +57,8 @@ type State = {
 
 type Actions = {
   addFile: (f: SourceFile) => void;
+  insertFileAt: (f: SourceFile, index: number) => void;
+  replaceSourceBytes: (fileId: string, bytes: Uint8Array) => void;
   replaceDocument: (f: SourceFile) => void;
   loadWorkspace: (w: {
     files: Record<string, SourceFile>;
@@ -104,6 +113,7 @@ const defaultPageNumbers: PageNumberOptions = {
 
 const init: State = {
   files: {},
+  filesRev: 0,
   pages: [],
   annotations: [],
   pageNumbers: defaultPageNumbers,
@@ -136,6 +146,8 @@ export const useDocStore = create<State & Actions>((set, get) => {
   const snap = (): Snap => {
     const s = get();
     return {
+      files: s.files,
+      filesRev: s.filesRev,
       pages: s.pages,
       annotations: s.annotations,
       pageNumbers: s.pageNumbers,
@@ -162,6 +174,7 @@ export const useDocStore = create<State & Actions>((set, get) => {
       }));
       set((s) => ({
         files: { ...s.files, [f.id]: f },
+        filesRev: s.filesRev + 1,
         pages: [...s.pages, ...descriptors],
         past: [...s.past, { label: `Add ${f.name}`, snap: snap() }],
         future: [],
@@ -169,6 +182,40 @@ export const useDocStore = create<State & Actions>((set, get) => {
         docTitle: s.docTitle === "Untitled document" ? f.name.replace(/\.pdf$/i, "") : s.docTitle,
         selectedPageIds: [],
       }));
+    },
+
+    insertFileAt: (f, index) => {
+      // Slot a whole source file into the page list at `index`. Used by
+      // merge and by inserting an image as a new page.
+      const descriptors: PageDescriptor[] = Array.from({ length: f.pageCount }, (_, i) => ({
+        id: uuid(),
+        fileId: f.id,
+        sourceIndex: i,
+        rotation: 0,
+        isBlank: false,
+      }));
+      const pages = [...get().pages];
+      const at = Math.max(0, Math.min(index, pages.length));
+      pages.splice(at, 0, ...descriptors);
+      commit(`Add ${f.name}`, {
+        files: { ...get().files, [f.id]: f },
+        filesRev: get().filesRev + 1,
+        pages,
+        currentPageId: descriptors[0]?.id ?? get().currentPageId,
+        selectedPageIds: [],
+      });
+    },
+
+    replaceSourceBytes: (fileId, bytes) => {
+      // Swap the bytes of a source file in place. Page descriptors keep
+      // pointing at the same file and page index, so the page order and
+      // every annotation stay valid.
+      const file = get().files[fileId];
+      if (!file) return;
+      commit("Edit source file", {
+        files: { ...get().files, [fileId]: { ...file, bytes } },
+        filesRev: get().filesRev + 1,
+      });
     },
 
     replaceDocument: (f) => {
@@ -183,6 +230,7 @@ export const useDocStore = create<State & Actions>((set, get) => {
       }));
       commit("Replace document", {
         files: { [f.id]: f },
+        filesRev: get().filesRev + 1,
         pages: descriptors,
         annotations: [],
         currentPageId: descriptors[0]?.id ?? null,
@@ -194,6 +242,7 @@ export const useDocStore = create<State & Actions>((set, get) => {
     loadWorkspace: (w) =>
       set((s) => ({
         ...w,
+        filesRev: s.filesRev + 1,
         currentPageId: w.pages[0]?.id ?? null,
         selectedId: null,
         selectedPageIds: [],

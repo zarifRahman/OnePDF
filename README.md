@@ -10,8 +10,9 @@ your machine.
 
 **Try it live → https://onepdf-three.vercel.app** · **Source code → https://github.com/zarifRahman/OnePDF**
 
-> **Status:** v2 — task-first onboarding, page management, a full annotation
-> editor, document tools (watermark / compress / redact / split), in-document
+> **Status:** v2 — task-first onboarding, page management (including an
+> explicit merge and image-as-page insert), a full annotation editor, document
+> tools (watermark / compress / redact / split / remove images), in-document
 > search and local autosave. All client-side.
 
 ## Screenshots
@@ -48,8 +49,8 @@ pages.
 ## Features
 
 **Start**
-- **Task-first home screen** — pick what you want to do (organise, edit,
-  compress, split, watermark, redact) and drop a PDF in; the app opens
+- **Task-first home screen** — pick what you want to do (organise, merge,
+  edit, compress, split, watermark, redact) and drop a PDF in; the app opens
   straight into that tool
 - **Drag-and-drop or file picker**, multiple files at once
 - **Recent documents** — the last session is restored automatically, everything
@@ -59,7 +60,9 @@ pages.
 **Organise pages**
 - **Multi-select** (click, ⇧-click for a range, ⌘-click to toggle) with a
   batch bar: rotate, duplicate, export selection, delete
-- **Merge** any number of PDFs into one, **reorder** by drag-and-drop
+- **Merge** any number of PDFs into one, **reorder** by drag-and-drop — either
+  from the home screen or with **Pages ▸ Merge with another PDF…**
+- **Insert image as page** — a PNG or JPEG becomes a page of its own
 - **Rotate**, **duplicate**, **delete**, **insert blank pages**
 - **Split** page ranges into separate PDFs (downloaded as one ZIP)
 - **Crop margins** off a page (Acrobat-style trim)
@@ -71,9 +74,13 @@ pages.
 - **Text** anywhere, plus **edit existing text** in the PDF (click a line)
 - **Freehand draw**, **highlight**, **underline**, **line**, **arrow**
 - **Shapes** (rectangle, circle) with stroke *and* fill
-- **Images**, **sticky notes**, and a **signature pad** (draw it, drop it on the page)
+- **Images** (insert a PNG/JPEG, or draw a signature and drop it on the page),
+  **sticky notes**
 - **Redaction** — black boxes that are burned into the file, so the text
   underneath is really gone
+- **Remove images** from a page — the image objects are cut out of the page
+  and dropped from the file, so the pixels are gone while the text and the
+  vector artwork stay sharp
 - **Move and resize** any mark with grab handles
 - **Font family, size, bold/italic, alignment, opacity, colour**
 
@@ -174,6 +181,15 @@ uploaded bytes → pdf-lib docs [truth]
               → react-pdf renders bytes for viewer + thumbnails
 ```
 
+**Removing images** is the one edit that rewrites bytes instead of metadata.
+The page's content stream is scanned for the operators that paint images
+(`/Name Do` for an image XObject, `BI … ID … EI` for an inline one) while the
+graphics state is tracked to find where each image sits, and those operators
+are cut out of the stream. The image objects are then dropped from the page's
+resources and deleted from the file when nothing else points at them — so the
+pixels are gone rather than covered up, and the text layer and the vector
+artwork survive untouched.
+
 One `react-pdf <Document>` is mounted for the whole app, so the sidebar
 thumbnails and the viewer share a single copy of the bytes and a single pdf.js
 instance.
@@ -189,11 +205,13 @@ components/
   sidebar/           sortable thumbnail list, batch bar
   viewer/            page views: single / continuous / facing
   editor/            annotation overlay, properties panel, signature pad
-  dialogs/           split, watermark, compress, export, margins, page numbers
+  dialogs/           split, watermark, compress, export, margins, page numbers,
+                     remove images
   ui/                shadcn/ui primitives
 lib/
   pdf/               exportPdf, rasterise (compress/redact/images), search,
-                     text extraction, page ranges, zip writer
+                     text extraction, page ranges, zip writer, content-stream
+                     scanner, image removal, image-to-page
   db/                IndexedDB persistence (autosave + recents)
   hooks/             keyboard shortcuts, autosave/restore
   utils.ts           cn(), uuid, downloadBytes, formatBytes

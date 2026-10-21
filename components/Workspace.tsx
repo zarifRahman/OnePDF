@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 import { Document } from "react-pdf";
 import "@/lib/pdf/pdfjs";
 import { useDocStore } from "@/store/document";
@@ -22,12 +23,13 @@ import { CompressDialog } from "@/components/dialogs/CompressDialog";
 import { ExportDialog } from "@/components/dialogs/ExportDialog";
 import { MarginsDialog } from "@/components/dialogs/MarginsDialog";
 import { PageNumbersDialog } from "@/components/dialogs/PageNumbersDialog";
+import { RemoveImagesDialog } from "@/components/dialogs/RemoveImagesDialog";
 import { ingestFiles } from "@/lib/pdf/ingest";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export function Workspace() {
   useKeyboardShortcuts();
-  const { files, pages, pageNumbers, watermark, tool, selectedId } = useDocStore();
+  const { files, pages, pageNumbers, watermark, tool, selectedId, filesRev } = useDocStore();
   const [docBytes, setDocBytes] = useState<Uint8Array | null>(null);
   const [dialog, setDialog] = useState<DialogId | null>(null);
   const [pendingTask, setPendingTask] = useState<Task | null>(null);
@@ -47,9 +49,23 @@ export function Workspace() {
   useEffect(() => onShortcut("search", () => setSearchOpen((v) => !v)), []);
   useEffect(() => onShortcut("shortcuts", () => setDialog("shortcuts")), []);
 
+  // Where a chosen task takes the user once the files are in.
+  const afterIngest = useCallback((task: Task | null, count: number) => {
+    if (task === "compress") setDialog("compress");
+    else if (task === "split") setDialog("split");
+    else if (task === "watermark") setDialog("watermark");
+    else if (task === "redact") useDocStore.getState().setTool("redact");
+    else if (task === "merge")
+      toast.success(
+        `Merged ${count} PDF${count === 1 ? "" : "s"} into one document`,
+      );
+  }, []);
+
   // Re-serialize whenever the page model changes so viewer + thumbnails
   // reflect the current order/rotation/blank pages/crops. Annotations render
   // live as an SVG overlay, so they are deliberately not part of this key.
+  // `filesRev` covers the edits that rewrite a source file in place, which
+  // leave the page list untouched.
   const key = useMemo(
     () =>
       pages
@@ -60,9 +76,10 @@ export function Workspace() {
             }`,
         )
         .join("|") +
+      `#${filesRev}` +
       `#${watermark ? `${watermark.text}${watermark.size}${watermark.opacity}${watermark.rotation}${watermark.color}` : ""}` +
       `#${pageNumbers.enabled}${pageNumbers.position}${pageNumbers.format}${pageNumbers.startAt}`,
-    [pages, watermark, pageNumbers],
+    [pages, filesRev, watermark, pageNumbers],
   );
 
   useEffect(() => {
@@ -121,32 +138,22 @@ export function Workspace() {
     async (task: Task, count: number) => {
       if (count > 0) {
         setPendingTask(null);
-        // Files were already ingested by the dropzone.
-        if (task === "compress") setDialog("compress");
-        else if (task === "split") setDialog("split");
-        else if (task === "watermark") setDialog("watermark");
-        else if (task === "redact") useDocStore.getState().setTool("redact");
+        afterIngest(task, count);
         return;
       }
       setPendingTask(task);
       fileInput.current?.click();
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
 
   const onPicked = async (files: FileList | null) => {
     if (!files) return;
     const count = await ingestFiles(files);
-    if (count > 0 && pendingTask) {
-      const task = pendingTask;
-      setPendingTask(null);
-      if (task === "compress") setDialog("compress");
-      else if (task === "split") setDialog("split");
-      else if (task === "watermark") setDialog("watermark");
-      else if (task === "redact") useDocStore.getState().setTool("redact");
-    } else {
-      setPendingTask(null);
-    }
+    const task = pendingTask;
+    setPendingTask(null);
+    if (count > 0) afterIngest(task, count);
   };
 
   const activeBytes = pages.length ? docBytes : null;
@@ -233,6 +240,10 @@ export function Workspace() {
       <PageNumbersDialog
         open={dialog === "pagenumbers"}
         onOpenChange={(v) => setDialog(v ? "pagenumbers" : null)}
+      />
+      <RemoveImagesDialog
+        open={dialog === "removeimages"}
+        onOpenChange={(v) => setDialog(v ? "removeimages" : null)}
       />
       <ShortcutsDialog
         open={dialog === "shortcuts"}
