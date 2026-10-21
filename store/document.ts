@@ -101,7 +101,8 @@ type Actions = {
   pushHistory: (label: string) => void;
   undo: () => void;
   redo: () => void;
-  reset: () => void;
+  /** Clear the workspace and go back to the home screen. */
+  goHome: () => void;
 };
 
 const defaultPageNumbers: PageNumberOptions = {
@@ -431,6 +432,8 @@ export const useDocStore = create<State & Actions>((set, get) => {
         };
       }),
 
-    reset: () => set({ ...init }),
+    // Clear the workspace. The document stays in the local store, so the
+    // home screen can offer it again under recent documents.
+    goHome: () => set({ ...init }),
   };
 });

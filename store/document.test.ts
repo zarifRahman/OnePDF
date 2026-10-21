@@ -4,7 +4,7 @@ import type { SourceFile } from "@/types";
 
 const src: SourceFile = { id: "a", name: "a.pdf", bytes: new Uint8Array(), pageCount: 3 };
 
-beforeEach(() => useDocStore.getState().reset());
+beforeEach(() => useDocStore.getState().goHome());
 
 describe("doc store", () => {
   it("addFile appends descriptors", () => {

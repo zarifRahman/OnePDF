@@ -46,6 +46,7 @@ import { deleteDocument, getWorkspaceId } from "@/lib/db/storage";
 import { Dropzone } from "@/components/upload/Dropzone";
 import { ingestImageAsPage, mergePdf } from "@/lib/pdf/ingest";
 import { onShortcut } from "@/lib/hooks/useKeyboardShortcuts";
+import { saveWorkspaceNow } from "@/lib/hooks/useAutosave";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -207,10 +208,31 @@ export function Toolbar({
     setZoom(zoom + d);
   };
 
+  // The brand in the header is the way back to the home screen. Save first so
+  // the document is waiting under recent documents when the user gets there.
+  const goHome = async () => {
+    let saved = true;
+    try {
+      await saveWorkspaceNow();
+    } catch {
+      saved = false;
+    }
+    useDocStore.getState().goHome();
+    if (saved) toast.success("Back to the home screen — saved under Recent documents");
+    else toast.error("Back to the home screen — this document could not be saved");
+  };
+
   return (
     <header className="flex items-center gap-2 border-b bg-background px-3 py-2">
-      <FileStack className="h-5 w-5 shrink-0 text-primary" />
-      <span className="hidden shrink-0 font-semibold sm:inline">OnePDF</span>
+      <button
+        onClick={() => void goHome()}
+        title="Back to the home screen"
+        aria-label="Back to the home screen"
+        className="flex shrink-0 items-center gap-2 rounded-md px-1.5 py-1 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <FileStack className="h-5 w-5 text-primary" />
+        <span className="hidden font-semibold sm:inline">OnePDF</span>
+      </button>
 
       {hasDoc && (
         <input
@@ -385,7 +407,7 @@ export function Toolbar({
             </MenuItem>
             <MenuItem
               onClick={() => {
-                useDocStore.getState().reset();
+                useDocStore.getState().goHome();
                 void deleteDocument(getWorkspaceId());
                 toast.success("Started a new document");
               }}

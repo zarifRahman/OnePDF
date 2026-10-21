@@ -12,6 +12,29 @@ import {
 
 const MAX_AGE = 24 * 60 * 60 * 1000; // a day
 
+export async function saveWorkspaceNow(): Promise<void> {
+  const s = useDocStore.getState();
+  if (!s.pages.length) return;
+  await saveDocument({
+    id: getWorkspaceId(),
+    title: s.docTitle,
+    updatedAt: Date.now(),
+    pageCount: s.pages.length,
+    data: {
+      pages: s.pages,
+      annotations: s.annotations,
+      pageNumbers: s.pageNumbers,
+      watermark: s.watermark,
+      files: Object.values(s.files).map((f) => ({
+        id: f.id,
+        name: f.name,
+        bytes: f.bytes,
+        pageCount: f.pageCount,
+      })),
+    },
+  });
+}
+
 /**
  * Keep the workspace in IndexedDB so a reload (or a crash) never loses the
  * user's work. Nothing leaves the device.
@@ -26,26 +49,8 @@ export function useAutosave() {
     const t = setTimeout(async () => {
       setSaving(true);
       try {
-        const now = Date.now();
-        await saveDocument({
-          id: getWorkspaceId(),
-          title: docTitle,
-          updatedAt: now,
-          pageCount: pages.length,
-          data: {
-            pages,
-            annotations,
-            pageNumbers,
-            watermark,
-            files: Object.values(files).map((f) => ({
-              id: f.id,
-              name: f.name,
-              bytes: f.bytes,
-              pageCount: f.pageCount,
-            })),
-          },
-        });
-        setSavedAt(now);
+        await saveWorkspaceNow();
+        setSavedAt(Date.now());
       } catch {
         /* storage unavailable (private mode) — keep working in memory */
       } finally {
