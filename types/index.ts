@@ -155,7 +155,16 @@ export type Annotation =
   | NoteAnnotation;
 
 /** A clickable existing-text line discovered via pdf.js, in PDF points (top-left). */
-export type EditTarget = { x: number; y: number; w: number; h: number; text: string; size: number; serif?: boolean };
+export type EditTarget = {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  text: string;
+  size: number;
+  serif?: boolean;
+  bold?: boolean;
+};
 
 /** One occurrence of a search term, in PDF points (top-left origin). */
 export type SearchHit = {

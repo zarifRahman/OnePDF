@@ -409,6 +409,7 @@ export function AnnotationLayer({
         size: e.size,
         color: "#000000",
         fontFamily: e.serif ? "Times" : "Helvetica",
+        bold: e.bold,
       });
   };
 
@@ -811,6 +812,7 @@ export function AnnotationLayer({
                       ? "Georgia, 'Times New Roman', serif"
                       : "Helvetica, Arial, sans-serif",
                   fontSize: edit.size,
+                  fontWeight: edit.kind === "existing" && edit.bold ? 700 : 400,
                   lineHeight: 1.1,
                   outline: "none",
                 }}

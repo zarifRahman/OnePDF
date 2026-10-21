@@ -9,6 +9,7 @@ export type TextLine = {
   text: string;
   size: number;
   serif?: boolean;
+  bold?: boolean;
 };
 
 /**
@@ -27,6 +28,7 @@ export async function extractLines(page: PDFPageProxy): Promise<TextLine[]> {
     size: number;
     text: string;
     serif: boolean;
+    bold: boolean;
   } | null = null;
 
   const flush = () => {
@@ -39,6 +41,7 @@ export async function extractLines(page: PDFPageProxy): Promise<TextLine[]> {
       text: cur.text,
       size: cur.size,
       serif: cur.serif,
+      bold: cur.bold,
     });
     cur = null;
   };
@@ -49,11 +52,13 @@ export async function extractLines(page: PDFPageProxy): Promise<TextLine[]> {
     const size = it.height || Math.abs(d) || 12;
     const family = tc.styles?.[it.fontName]?.fontFamily ?? "";
     const serif = /serif|times|georgia|roman|garamond/i.test(family) && !/sans/i.test(family);
-    if (!cur) cur = { x0: e, x1: e + it.width, baseline: f, size, text: it.str, serif };
+    const bold = /bold|black|heavy|demi|semibold/i.test(`${it.fontName ?? ""} ${family}`);
+    if (!cur) cur = { x0: e, x1: e + it.width, baseline: f, size, text: it.str, serif, bold };
     else {
       cur.x1 = e + it.width;
       cur.size = Math.max(cur.size, size);
       cur.text += it.str;
+      cur.bold ||= bold;
     }
     if (it.hasEOL) flush();
   }
