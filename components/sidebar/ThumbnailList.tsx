@@ -1,4 +1,5 @@
 "use client";
+
 import {
   DndContext,
   closestCenter,
@@ -15,7 +16,7 @@ import {
 import { useDocStore } from "@/store/document";
 import { ThumbnailItem } from "./ThumbnailItem";
 
-export function ThumbnailList({ docBytes }: { docBytes: Uint8Array | null }) {
+export function ThumbnailList() {
   const { pages, reorder } = useDocStore();
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -34,7 +35,7 @@ export function ThumbnailList({ docBytes }: { docBytes: Uint8Array | null }) {
       <SortableContext items={pages.map((p) => p.id)} strategy={verticalListSortingStrategy}>
         <div className="flex flex-col gap-3 p-3">
           {pages.map((p, i) => (
-            <ThumbnailItem key={p.id} page={p} pageNumber={i + 1} docBytes={docBytes} />
+            <ThumbnailItem key={p.id} page={p} pageNumber={i + 1} />
           ))}
         </div>
       </SortableContext>

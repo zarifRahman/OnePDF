@@ -1,130 +1,132 @@
 "use client";
-import { useMemo, useState } from "react";
-import { Document, Page } from "react-pdf";
-import type { PDFPageProxy } from "pdfjs-dist";
-import { ChevronLeft, ChevronRight } from "lucide-react";
-import { useDocStore } from "@/store/document";
-import { Skeleton } from "@/components/ui/skeleton";
-import { AnnotationLayer } from "@/components/editor/AnnotationLayer";
-import type { EditTarget } from "@/types";
 
-export function Viewer({ docBytes }: { docBytes: Uint8Array | null }) {
-  const { pages, currentPageId, setCurrent, zoom, tool } = useDocStore();
+import { useEffect, useRef, useState } from "react";
+import { useDocStore } from "@/store/document";
+import { PageView } from "@/components/viewer/PageView";
+import { clamp } from "@/lib/utils";
+import type { SearchHit } from "@/types";
+
+/**
+ * The canvas area. Three view modes, mirroring what every other PDF tool
+ * offers: a single page, a continuous scroll, and a facing (spread) layout.
+ */
+export function Viewer({ hits = [] }: { hits?: SearchHit[] }) {
+  const { pages, currentPageId, setCurrent, fit, viewMode, tool } = useDocStore();
+  const scrollRef = useRef<HTMLDivElement>(null);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
-  const [dims, setDims] = useState<{ w: number; h: number } | null>(null);
-  const [targets, setTargets] = useState<EditTarget[]>([]);
+  const [pageSize, setPageSize] = useState<{ w: number; h: number } | null>(null);
+  const [box, setBox] = useState({ w: 0, h: 0 });
 
-  // Pull existing text spans (for the Edit-text tool) once the page loads.
-  const loadPage = async (p: PDFPageProxy) => {
-    const vp = p.getViewport({ scale: 1 });
-    setDims({ w: vp.width, h: vp.height });
-    try {
-      const tc = await p.getTextContent();
-      const found: EditTarget[] = [];
-      // Accumulate pdf.js text fragments into whole lines (they arrive in
-      // reading order; `hasEOL` marks a line break). One editable box per line.
-      let cur: { x0: number; x1: number; baseline: number; size: number; text: string; serif: boolean } | null = null;
-      const flush = () => {
-        if (!cur || !cur.text.trim()) return void (cur = null);
-        found.push({ x: cur.x0, y: vp.height - cur.baseline - cur.size, w: cur.x1 - cur.x0, h: cur.size, text: cur.text, size: cur.size, serif: cur.serif });
-        cur = null;
-      };
-      for (const it of tc.items) {
-        if (!("str" in it)) continue;
-        const [, , , d, e, f] = it.transform;
-        const size = it.height || Math.abs(d) || 12;
-        const family = tc.styles?.[it.fontName]?.fontFamily ?? "";
-        const serif = /serif|times|georgia|roman|garamond/i.test(family) && !/sans/i.test(family);
-        if (!cur) cur = { x0: e, x1: e + it.width, baseline: f, size, text: it.str, serif };
-        else {
-          cur.x1 = e + it.width;
-          cur.size = Math.max(cur.size, size);
-          cur.text += it.str;
-        }
-        if (it.hasEOL) flush();
-      }
-      flush();
-      setTargets(found);
-    } catch {
-      setTargets([]);
-    }
-  };
+  // Track the viewport size so "fit width" / "fit page" can be recomputed.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setBox({ w: el.clientWidth, h: el.clientHeight }));
+    ro.observe(el);
+    setBox({ w: el.clientWidth, h: el.clientHeight });
+    return () => ro.disconnect();
+  }, []);
 
-  const idx = pages.findIndex((p) => p.id === currentPageId);
-  const pageNumber = idx >= 0 ? idx + 1 : 1;
-  const go = (d: number) => {
-    const n = idx + d;
-    if (n >= 0 && n < pages.length) setCurrent(pages[n].id);
-  };
+  // Fit modes translate the container size into a zoom level.
+  useEffect(() => {
+    if (fit === "none" || !pageSize || !box.w || !box.h) return;
+    const availW = box.w - 64;
+    const availH = box.h - 64;
+    const scale =
+      fit === "width"
+        ? availW / pageSize.w
+        : Math.min(availW / pageSize.w, availH / pageSize.h);
+    useDocStore.getState().setZoom(clamp(scale, 0.25, 4));
+  }, [fit, pageSize, box]);
 
-  // Own copy: pdf.js detaches the buffer it receives (see ThumbnailItem).
-  // Memoized file object so react-pdf doesn't reload every render.
-  const file = useMemo(() => (docBytes ? { data: docBytes.slice(0) } : null), [docBytes]);
-  // Gate <Page> on the loaded doc's count — docBytes lags the pages array.
-  const [numPages, setNumPages] = useState(0);
+  // In continuous mode the page under the viewport is the current page.
+  useEffect(() => {
+    const root = scrollRef.current;
+    if (!root || viewMode === "single") return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const best = entries
+          .filter((e) => e.isIntersecting)
+          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+        const id = best?.target.getAttribute("data-page-id");
+        if (id) setCurrent(id);
+      },
+      { root, threshold: [0.25, 0.6] },
+    );
+    root.querySelectorAll("[data-page-id]").forEach((el) => observer.observe(el));
+    return () => observer.disconnect();
+  }, [pages, viewMode, setCurrent]);
+
+  const currentIndex = pages.findIndex((p) => p.id === currentPageId);
+  const activeId = currentIndex >= 0 ? currentPageId : pages[0]?.id;
 
   // Pan only in select mode, and never when the click lands on an annotation
   // shape (those have pointer-events; empty area passes through to here).
   const canPan = (e: React.MouseEvent) =>
     tool === "select" && !(e.target as Element).closest("svg[data-annotations]");
 
-  if (!file)
-    return (
-      <div className="grid flex-1 place-items-center text-muted-foreground">No page selected</div>
-    );
+  const hitsByPage = new Map<string, SearchHit[]>();
+  for (const h of hits) {
+    const id = pages[h.pageIndex]?.id;
+    if (!id) continue;
+    const list = hitsByPage.get(id) ?? [];
+    list.push(h);
+    hitsByPage.set(id, list);
+  }
+
+  const renderPage = (pageId: string, pageNumber: number) => (
+    <PageView
+      key={pageId}
+      pageId={pageId}
+      pageNumber={pageNumber}
+      hits={hitsByPage.get(pageId) ?? []}
+      active={pageId === activeId}
+      onSize={(w, h) => {
+        if (pageId === activeId) setPageSize({ w, h });
+      }}
+    />
+  );
 
   return (
-    <div className="relative flex flex-1 flex-col overflow-hidden bg-muted/30">
-      <div
-        className="flex flex-1 items-center justify-center overflow-auto p-8"
-        style={{ cursor: dragStart ? "grabbing" : tool === "select" ? "grab" : "default" }}
-        onMouseDown={(e) => canPan(e) && setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y })}
-        onMouseMove={(e) => dragStart && setPan({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y })}
-        onMouseUp={() => setDragStart(null)}
-        onMouseLeave={() => setDragStart(null)}
-      >
-        <div style={{ transform: `translate(${pan.x}px, ${pan.y}px)` }}>
-          <Document
-            file={file}
-            loading={<Skeleton className="h-[600px] w-[450px]" />}
-            onLoadSuccess={({ numPages: n }) => setNumPages(n)}
-          >
-            {pageNumber <= numPages ? (
-              <div className="relative inline-block shadow-lg">
-                <Page
-                  pageNumber={pageNumber}
-                  scale={zoom}
-                  renderTextLayer={tool === "select"}
-                  renderAnnotationLayer={false}
-                  loading={<Skeleton className="h-[600px] w-[450px]" />}
-                  onLoadSuccess={loadPage}
-                />
-                {currentPageId && dims && (
-                  <AnnotationLayer
-                    pageId={currentPageId}
-                    wPts={dims.w}
-                    hPts={dims.h}
-                    editTargets={targets}
-                  />
-                )}
-              </div>
-            ) : (
-              <Skeleton className="h-[600px] w-[450px]" />
-            )}
-          </Document>
+    <div
+      ref={scrollRef}
+      className="relative flex-1 overflow-auto bg-muted/30"
+      style={{ cursor: dragStart ? "grabbing" : tool === "select" ? "grab" : "default" }}
+      onMouseDown={(e) => canPan(e) && setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y })}
+      onMouseMove={(e) => dragStart && setPan({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y })}
+      onMouseUp={() => setDragStart(null)}
+      onMouseLeave={() => setDragStart(null)}
+    >
+      <div style={{ transform: `translate(${pan.x}px, ${pan.y}px)` }}>
+        <div className="flex min-h-full items-center justify-center p-8">
+          {viewMode === "single" ? (
+            activeId ? (
+              <div className="inline-block">{renderPage(activeId, currentIndex + 1)}</div>
+            ) : null
+          ) : viewMode === "facing" ? (
+            <div className="flex flex-col items-center gap-6">
+              {Array.from({ length: Math.ceil(pages.length / 2) }, (_, i) => {
+                const a = pages[i * 2];
+                const b = pages[i * 2 + 1];
+                return (
+                  <div key={a.id} className="flex gap-4">
+                    {renderPage(a.id, i * 2 + 1)}
+                    {b ? renderPage(b.id, i * 2 + 2) : <div className="w-1" />}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center gap-6">
+              {pages.map((p, i) => (
+                <div key={p.id} data-page-id={p.id} className="inline-block">
+                  {renderPage(p.id, i + 1)}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
-      </div>
-      <div className="flex items-center justify-center gap-4 border-t bg-background/80 py-2 backdrop-blur">
-        <button onClick={() => go(-1)} disabled={idx <= 0} className="disabled:opacity-30">
-          <ChevronLeft />
-        </button>
-        <span className="text-sm">
-          {pageNumber} / {pages.length}
-        </span>
-        <button onClick={() => go(1)} disabled={idx >= pages.length - 1} className="disabled:opacity-30">
-          <ChevronRight />
-        </button>
       </div>
     </div>
   );

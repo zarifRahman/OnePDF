@@ -1,60 +1,243 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Document } from "react-pdf";
 import "@/lib/pdf/pdfjs";
 import { useDocStore } from "@/store/document";
 import { exportPdf } from "@/lib/pdf/export";
-import { useKeyboardShortcuts } from "@/lib/hooks/useKeyboardShortcuts";
-import { Toolbar } from "@/components/toolbar/Toolbar";
-import { ThumbnailList } from "@/components/sidebar/ThumbnailList";
+import { searchDocument, type SearchHit } from "@/lib/pdf/search";
+import { useKeyboardShortcuts, onShortcut } from "@/lib/hooks/useKeyboardShortcuts";
+import { useAutosave, useRestoreSession } from "@/lib/hooks/useAutosave";
+import { Toolbar, type DialogId } from "@/components/toolbar/Toolbar";
+import { PagePanel } from "@/components/sidebar/PagePanel";
 import { Viewer } from "@/components/viewer/Viewer";
-import { Dropzone } from "@/components/upload/Dropzone";
 import { PropertiesPanel } from "@/components/editor/PropertiesPanel";
+import { StatusBar } from "@/components/app/StatusBar";
+import { SearchPanel } from "@/components/app/SearchPanel";
+import { Welcome, type Task } from "@/components/app/Welcome";
+import { ShortcutsDialog } from "@/components/app/ShortcutsDialog";
+import { SplitDialog } from "@/components/dialogs/SplitDialog";
+import { WatermarkDialog } from "@/components/dialogs/WatermarkDialog";
+import { CompressDialog } from "@/components/dialogs/CompressDialog";
+import { ExportDialog } from "@/components/dialogs/ExportDialog";
+import { MarginsDialog } from "@/components/dialogs/MarginsDialog";
+import { PageNumbersDialog } from "@/components/dialogs/PageNumbersDialog";
+import { ingestFiles } from "@/lib/pdf/ingest";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export function Workspace() {
   useKeyboardShortcuts();
-  const { files, pages, tool, selectedId } = useDocStore();
+  const { files, pages, pageNumbers, watermark, tool, selectedId } = useDocStore();
   const [docBytes, setDocBytes] = useState<Uint8Array | null>(null);
+  const [dialog, setDialog] = useState<DialogId | null>(null);
+  const [pendingTask, setPendingTask] = useState<Task | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [hits, setHits] = useState<SearchHit[]>([]);
+  const [hitIndex, setHitIndex] = useState(0);
+  const fileInput = useRef<HTMLInputElement>(null);
 
-  // Re-serialize whenever the descriptor model changes so viewer + thumbnails
-  // reflect the current order/rotation/blank pages. `key` collapses the
-  // dependency to the parts that affect rendered output.
+  // pdf.js detaches the buffer it is given, so hand it a private copy.
+  const file = useMemo(() => (docBytes ? { data: docBytes.slice(0) } : null), [docBytes]);
+
+  const { saving, savedAt } = useAutosave();
+  useRestoreSession();
+
+  // Global shortcuts (⌘F, ?) reach the shell through the shortcut bus.
+  useEffect(() => onShortcut("search", () => setSearchOpen((v) => !v)), []);
+  useEffect(() => onShortcut("shortcuts", () => setDialog("shortcuts")), []);
+
+  // Re-serialize whenever the page model changes so viewer + thumbnails
+  // reflect the current order/rotation/blank pages/crops. Annotations render
+  // live as an SVG overlay, so they are deliberately not part of this key.
   const key = useMemo(
-    () => pages.map((p) => `${p.fileId}:${p.sourceIndex}:${p.rotation}:${p.isBlank}`).join("|"),
-    [pages],
+    () =>
+      pages
+        .map(
+          (p) =>
+            `${p.fileId}:${p.sourceIndex}:${p.rotation}:${p.isBlank}:${
+              p.crop ? `${p.crop.top},${p.crop.right},${p.crop.bottom},${p.crop.left}` : ""
+            }`,
+        )
+        .join("|") +
+      `#${watermark ? `${watermark.text}${watermark.size}${watermark.opacity}${watermark.rotation}${watermark.color}` : ""}` +
+      `#${pageNumbers.enabled}${pageNumbers.position}${pageNumbers.format}${pageNumbers.startAt}`,
+    [pages, watermark, pageNumbers],
   );
 
   useEffect(() => {
     let cancelled = false;
-    if (!pages.length) return; // empty state renders the dropzone; docBytes unused
-    exportPdf(files, pages)
-      .then((b) => {
-        if (!cancelled) setDocBytes(b);
-      })
-      .catch(() => {});
+    if (!pages.length) return;
+    const t = setTimeout(() => {
+      exportPdf(files, pages, { pageNumbers, watermark })
+        .then((b) => {
+          if (!cancelled) setDocBytes(b);
+        })
+        .catch(() => {});
+    }, 120);
     return () => {
       cancelled = true;
+      clearTimeout(t);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
+  // Search: run against the exported bytes, debounced.
+  useEffect(() => {
+    if (!searchOpen || !query.trim() || !docBytes) return;
+    let cancelled = false;
+    const t = setTimeout(() => {
+      searchDocument(docBytes, query)
+        .then((h) => {
+          if (cancelled) return;
+          setHits(h);
+          setHitIndex(0);
+          if (h.length) {
+            const p = useDocStore.getState().pages[h[0].pageIndex];
+            if (p) useDocStore.getState().setCurrent(p.id);
+          }
+        })
+        .catch(() => setHits([]));
+    }, 320);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [query, searchOpen, docBytes]);
+
+  const navigateHits = useCallback(
+    (next: number) => {
+      if (!hits.length) return;
+      const i = (next + hits.length) % hits.length;
+      setHitIndex(i);
+      const p = useDocStore.getState().pages[hits[i].pageIndex];
+      if (p) useDocStore.getState().setCurrent(p.id);
+    },
+    [hits],
+  );
+
+  // A task card on the welcome screen: pick a file, then jump into the tool.
+  const runTask = useCallback(
+    async (task: Task, count: number) => {
+      if (count > 0) {
+        setPendingTask(null);
+        // Files were already ingested by the dropzone.
+        if (task === "compress") setDialog("compress");
+        else if (task === "split") setDialog("split");
+        else if (task === "watermark") setDialog("watermark");
+        else if (task === "redact") useDocStore.getState().setTool("redact");
+        return;
+      }
+      setPendingTask(task);
+      fileInput.current?.click();
+    },
+    [],
+  );
+
+  const onPicked = async (files: FileList | null) => {
+    if (!files) return;
+    const count = await ingestFiles(files);
+    if (count > 0 && pendingTask) {
+      const task = pendingTask;
+      setPendingTask(null);
+      if (task === "compress") setDialog("compress");
+      else if (task === "split") setDialog("split");
+      else if (task === "watermark") setDialog("watermark");
+      else if (task === "redact") useDocStore.getState().setTool("redact");
+    } else {
+      setPendingTask(null);
+    }
+  };
+
+  const activeBytes = pages.length ? docBytes : null;
+
+  if (pages.length === 0) {
+    return (
+      <div className="flex h-screen flex-col">
+        <Welcome
+          onTask={runTask}
+          onShortcuts={() => setDialog("shortcuts")}
+        />
+        <input
+          id="task-file-input"
+          ref={fileInput}
+          type="file"
+          accept="application/pdf"
+          multiple
+          hidden
+          onChange={(e) => {
+            void onPicked(e.target.files);
+            e.target.value = "";
+          }}
+        />
+        <ShortcutsDialog
+          open={dialog === "shortcuts"}
+          onOpenChange={(v) => setDialog(v ? "shortcuts" : null)}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-screen flex-col">
-      <Toolbar />
-      {pages.length === 0 ? (
-        <div className="grid flex-1 place-items-center p-8">
-          <div className="w-full max-w-lg">
-            <Dropzone />
-          </div>
+      <Toolbar onToggleSearch={() => setSearchOpen((v) => !v)} onOpenDialog={setDialog} />
+      {/* One react-pdf document for the whole app: the sidebar thumbnails and
+          the viewer share a single copy of the bytes and a single pdf.js
+          instance instead of one per thumbnail. */}
+      <Document
+        file={file}
+        className="flex flex-1 overflow-hidden"
+        loading={<Skeleton className="m-8 h-[600px] w-[450px]" />}
+      >
+        <PagePanel onExportSelection={() => setDialog("export")} />
+        <div className="relative flex flex-1 overflow-hidden">
+          <Viewer hits={hits} />
+          <SearchPanel
+            open={searchOpen}
+            query={query}
+            hits={hits}
+            index={hitIndex}
+            onQuery={(q) => {
+              setQuery(q);
+              if (!q.trim()) setHits([]);
+            }}
+            onNavigate={navigateHits}
+            onClose={() => {
+              setSearchOpen(false);
+              setQuery("");
+              setHits([]);
+            }}
+          />
         </div>
-      ) : (
-        <div className="flex flex-1 overflow-hidden">
-          <aside className="w-[190px] shrink-0 overflow-y-auto border-r">
-            <ThumbnailList docBytes={docBytes} />
-          </aside>
-          <Viewer docBytes={docBytes} />
-          {(tool !== "select" || selectedId != null) && <PropertiesPanel />}
-        </div>
-      )}
+        {(tool !== "select" || selectedId != null) && <PropertiesPanel />}
+      </Document>
+      <StatusBar docBytes={activeBytes} savedAt={savedAt} saving={saving} />
+
+      <SplitDialog open={dialog === "split"} onOpenChange={(v) => setDialog(v ? "split" : null)} />
+      <WatermarkDialog
+        open={dialog === "watermark"}
+        onOpenChange={(v) => setDialog(v ? "watermark" : null)}
+      />
+      <CompressDialog
+        open={dialog === "compress"}
+        onOpenChange={(v) => setDialog(v ? "compress" : null)}
+      />
+      <ExportDialog
+        open={dialog === "export"}
+        onOpenChange={(v) => setDialog(v ? "export" : null)}
+      />
+      <MarginsDialog
+        open={dialog === "margins"}
+        onOpenChange={(v) => setDialog(v ? "margins" : null)}
+      />
+      <PageNumbersDialog
+        open={dialog === "pagenumbers"}
+        onOpenChange={(v) => setDialog(v ? "pagenumbers" : null)}
+      />
+      <ShortcutsDialog
+        open={dialog === "shortcuts"}
+        onOpenChange={(v) => setDialog(v ? "shortcuts" : null)}
+      />
     </div>
   );
 }
